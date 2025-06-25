@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>UNC Mito Viewer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>UNC Mito Viewer</h1>
+    </header>
+
+    <main>
+            {% block content %}{% endblock %}
+    </main>
+
+    <!-- Load JavaScript at the end of body -->
+    <script src="{{ url_for('static', filename='js/mitochondria_viewer.js') }}"></script>
+    <script>
+        // Initialize the viewer when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Initializing viewer...');
+            window.viewer = new MitochondriaViewer(document.getElementById('mito-tiles'));
+        });
+    </script>
+</body>
+</html>

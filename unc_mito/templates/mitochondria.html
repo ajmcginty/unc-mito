@@ -1,0 +1,19 @@
+<!-- templates/mitochondria.html -->
+{% extends "templatebase.html" %}
+{% block content %}
+<div class="container">
+    <h1>Mitochondria Viewer</h1>
+    <div class="controls">
+        <input type="text" id="neuron-id" placeholder="Enter Neuron ID" value="36750893213">
+        <button onclick="loadMitosForNeuron()">Load Mitochondria</button>
+        <button id="generate-screenshots" onclick="generateScreenshots()" style="display: none;">Generate Screenshots</button>
+        <div id="screenshot-status" style="display: none;"></div>
+    </div>
+    <div id="mito-tiles" class="mito-grid">
+        <!-- Tiles will be populated by JavaScript -->
+    </div>
+    <div id="pagination" class="pagination">
+        <!-- Pagination will be populated by JavaScript -->
+    </div>
+</div>
+{% endblock %}

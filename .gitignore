@@ -1,0 +1,26 @@
+# Virtual Environment
+venv/
+__pycache__/
+*.pyc
+
+# Environment files
+.env
+.flaskenv
+
+# IDE specific files
+.vscode/
+.idea/
+
+# Generated files
+unc_mito.egg-info/
+*.egg-info/
+
+# Data files (since they're large)
+data/
+
+# Generated screenshots
+unc_mito/static/screenshots/*
+!unc_mito/static/screenshots/.gitkeep
+
+# System files
+.DS_Store
