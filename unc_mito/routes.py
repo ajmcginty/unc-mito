@@ -4,11 +4,14 @@ from flask import Blueprint, render_template, jsonify, current_app, request
 from pathlib import Path
 from .backend.materialization import MitochondriaMaterialization
 from .backend.screenshot_generator import ScreenshotGenerator
-from .config import MATERIALIZATION_CSV, SCREENSHOTS_DIR, DEFAULT_SCREENSHOT
+from .backend.screenshot_generator_360 import ScreenshotGenerator360
+from .config import MATERIALIZATION_CSV, SCREENSHOTS_DIR, DEFAULT_SCREENSHOT, MITO_URL
 import os
 
 # Initialize screenshot generator and materialization data at module level
-screenshot_gen = ScreenshotGenerator()
+# Remove precomputed:// prefix for CloudVolume
+mito_src = MITO_URL.replace('precomputed://', '')
+screenshot_gen = ScreenshotGenerator360(mito_src)
 mito_data = MitochondriaMaterialization(MATERIALIZATION_CSV)
 
 def create_blueprint():
@@ -60,15 +63,6 @@ def create_blueprint():
                 if not output_dir_for_mito.exists():
                     success = screenshot_gen.generate_screenshots(
                         mito_id,
-                        {
-                            'min_x': row['min_x'],
-                            'max_x': row['max_x'],
-                            'min_y': row['min_y'],
-                            'max_y': row['max_y'],
-                            'min_z': row['min_z'],
-                            'max_z': row['max_z']
-                        },
-                        mito_data.mito_url,
                         output_dir_for_mito
                     )
                     
