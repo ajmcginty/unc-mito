@@ -167,12 +167,17 @@ class MitochondriaViewer {
         const prevBtn = document.createElement('button');
         prevBtn.className = 'nav-btn prev';
         prevBtn.innerHTML = '←';
-        prevBtn.onclick = () => this.rotateView(mito.id, -1);
+        prevBtn.onclick = () => this.rotateView(mito.id, 1);  // Changed from -1 to 1
         
         const nextBtn = document.createElement('button');
         nextBtn.className = 'nav-btn next';
         nextBtn.innerHTML = '→';
-        nextBtn.onclick = () => this.rotateView(mito.id, 1);
+        nextBtn.onclick = () => this.rotateView(mito.id, -1);  // Changed from 1 to -1
+        
+        // Add ID label
+        const idLabel = document.createElement('div');
+        idLabel.className = 'mito-id-label';
+        idLabel.innerHTML = `ID: ${mito.id}`;
         
         // Add Neuroglancer button
         const ngBtn = document.createElement('button');
@@ -182,6 +187,7 @@ class MitochondriaViewer {
         
         viewer.appendChild(prevBtn);
         viewer.appendChild(nextBtn);
+        viewer.appendChild(idLabel);
         tile.appendChild(viewer);
         tile.appendChild(ngBtn);
         
@@ -229,13 +235,13 @@ class MitochondriaViewer {
             statusDiv.textContent = 'Generating screenshots...';
             generateBtn.disabled = true;
             
-            const response = await fetch(`/generate_screenshots/${neuronId}`);
+            const response = await fetch(`/generate_screenshots/${neuronId}?page=${this.currentPage}`);
             const data = await response.json();
             
             if (data.success) {
                 statusDiv.textContent = data.message;
-                // Reload the mitochondria to show new screenshots
-                await this.loadMitosForNeuron();
+                // Reload the mitochondria to show new screenshots, staying on current page
+                await this.loadMitosForNeuron(this.currentPage);
             } else {
                 statusDiv.textContent = `Error: ${data.error}`;
             }

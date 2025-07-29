@@ -3,6 +3,9 @@
 import pandas as pd
 import numpy as np
 import requests
+import json
+import urllib.parse
+from ..config import MITO_URL, NEURON_URL
 import os
 import json
 from ..config import MITO_URL, NEURON_URL, DEFAULT_SCREENSHOT
@@ -15,6 +18,8 @@ class MitochondriaMaterialization:
             csv_path (str): Path to CSV containing mitochondria data
         """
         self.df = pd.read_csv(csv_path)
+        self.mito_url = MITO_URL
+        self.neuron_url = NEURON_URL
         # Convert segment_id to integer
         self.df['segment_id'] = self.df['segment_id'].astype(int)
         self.mito_url = MITO_URL
@@ -170,10 +175,10 @@ class MitochondriaMaterialization:
             "position": [center_x, center_y, center_z],
             "crossSectionScale": 1,
             "projectionScale": max_size / 2,
-            "layout": "xy",
-            "showSlices": False,
-            "showAxisLines": False,
-            "showDefaultAnnotations": False,
+            "layout": "xy-3d",
+            "showSlices": True,
+            "showAxisLines": True,
+            "showDefaultAnnotations": True,
             "layers": [
                 {
                     "type": "segmentation",
@@ -191,11 +196,76 @@ class MitochondriaMaterialization:
                         }
                     """,
                     "segmentDefaultColor": "#ff0000"
+                },
+                {
+                    "type": "segmentation",
+                    "source": self.neuron_url,
+                    "tab": "source",
+                    "segments": [str(neuron_id)],
+                    "name": "neuron",
+                    "visible": True,
+                    "selectedAlpha": 0.3,
+                    "notSelectedAlpha": 0,
+                    "shader": """
+                        void main() {
+                            emitRGB(vec3(0.2, 0.2, 0.8));
+                            emitAlpha(0.3);
+                        }
+                    """,
+                    "segmentDefaultColor": "#0000ff"
                 }
             ]
         }
         
-        return f"https://neuroglancer-demo.appspot.com/#!{json.dumps(view_state)}"    
+        # Construct minimal state for Neuroglancer
+        state = {
+            "dimensions": {
+                "x": ["x", "nm"],
+                "y": ["y", "nm"],
+                "z": ["z", "nm"]
+            },
+            "position": view_state["position"],
+            "crossSectionScale": 1,
+            "projectionScale": view_state["projectionScale"],
+            "layers": [
+                {
+                    "type": "segmentation",
+                    "source": {
+                        "url": self.mito_url,
+                        "transform": {
+                            "outputDimensions": {
+                                "x": ["x", "nm"],
+                                "y": ["y", "nm"],
+                                "z": ["z", "nm"]
+                            }
+                        }
+                    },
+                    "segments": [str(mito_id)],
+                    "name": "mitochondria"
+                },
+                {
+                    "type": "segmentation",
+                    "source": {
+                        "url": self.neuron_url,
+                        "transform": {
+                            "outputDimensions": {
+                                "x": ["x", "nm"],
+                                "y": ["y", "nm"],
+                                "z": ["z", "nm"]
+                            }
+                        }
+                    },
+                    "segments": [str(neuron_id)],
+                    "name": "neuron"
+                }
+            ],
+            "layout": "xy-3d",
+            "selectedLayer": {"visible": True, "layer": "mitochondria"}
+        }
+        
+        # Convert the state to a JSON string and URL encode it
+        encoded_state = urllib.parse.quote(json.dumps(state))
+        return f"https://neuroglancer-demo.appspot.com/#!{encoded_state}"
     def get_volume_bounds_from_precomputed(self, precomputed_url):
         if precomputed_url.startswith('precomputed://'):
             precomputed_url = precomputed_url[len('precomputed://'):]

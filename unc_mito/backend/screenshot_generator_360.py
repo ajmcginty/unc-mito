@@ -13,6 +13,7 @@ import traceback
 import numpy as np
 from cloudvolume import CloudVolume
 import pyvista as pv
+import argparse
 
 class ScreenshotGenerator360:
     # Class-level constants
@@ -29,8 +30,6 @@ class ScreenshotGenerator360:
         """
         self.mito_src = mito_src
         self.step_deg = step_deg or self.DEFAULT_STEP_DEG
-        
-        # Initialize CloudVolume
         self.vol = CloudVolume(self.mito_src, use_https=True)
 
     def print_mesh_stats(self, mesh, vertices):
@@ -78,9 +77,7 @@ class ScreenshotGenerator360:
         # Create the mesh
         pvmesh = pv.PolyData(vertices, faces)
         
-        # Add visualization elements
-        plotter.add_axes()
-        plotter.add_bounding_box(color='gray', opacity=0.3)
+        # Add visualization elements - removed bounding box and axes
         plotter.enable_eye_dome_lighting()
         plotter.enable_depth_peeling()
         
@@ -97,38 +94,10 @@ class ScreenshotGenerator360:
             line_width=2,
         )
         
-        # Add center point marker
-        center = np.array([pvmesh.center])
-        plotter.add_points(center, color='blue', point_size=20, render_points_as_spheres=True)
-        
-        # Add a shadow plane for better depth perception
-        bounds = pvmesh.bounds
-        grid = pv.Plane(
-            center=(center[0][0], center[0][1], bounds[4] - 100),
-            direction=(0, 0, 1),
-            i_size=(bounds[1] - bounds[0]) * 1.5,
-            j_size=(bounds[3] - bounds[2]) * 1.5
-        )
-        plotter.add_mesh(grid, color='lightgray', opacity=0.3)
-        
-        # Set up camera
-        plotter.camera.enable_parallel_projection()
-        plotter.camera_position = 'xy'
-        plotter.reset_camera()
-        
         return plotter, pvmesh
 
     def generate_screenshots(self, mito_id, output_dir, debug=False):
-        """Generate 360-degree screenshots for a mitochondrion.
-        
-        Args:
-            mito_id: ID of the mitochondrion
-            output_dir: Directory to save screenshots
-            debug (bool): Whether to print debug information
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
+        """Implementation of screenshot generation - must run on main thread"""
         try:
             # Convert mito_id to uint64 for CloudVolume
             mito_id = np.uint64(mito_id)
@@ -137,17 +106,36 @@ class ScreenshotGenerator360:
             output_dir = Path(output_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
             
-            # Fetch and process mesh
+            # Fetch mesh from CloudVolume
             mesh = self.vol.mesh.get(mito_id)
-            vertices = mesh.vertices * [self.VOXEL_SIZE_NM['x'], 
-                                      self.VOXEL_SIZE_NM['y'], 
-                                      self.VOXEL_SIZE_NM['z']]
+            
+            # Keep vertices in voxel space
+            vertices = mesh.vertices.copy()
             
             if debug:
                 self.print_mesh_stats(mesh, vertices)
             
             # Setup visualization
-            plotter, _ = self.setup_plotter(mesh, vertices)
+            plotter, pvmesh = self.setup_plotter(mesh, vertices)
+            
+            # Calculate physical size
+            bounds = pvmesh.bounds
+            size = np.array([
+                bounds[1] - bounds[0],
+                bounds[3] - bounds[2],
+                bounds[5] - bounds[4]
+            ])
+            
+            # Scale size by voxel dimensions to get physical size
+            physical_size = size * [self.VOXEL_SIZE_NM['x'], 
+                                  self.VOXEL_SIZE_NM['y'], 
+                                  self.VOXEL_SIZE_NM['z']]
+            
+            # Use the largest physical dimension for camera distance
+            max_physical_size = np.max(physical_size)
+            
+            # Calculate center
+            center = np.mean(vertices, axis=0)
             
             if debug:
                 print("\nInitial camera setup:")
@@ -157,7 +145,34 @@ class ScreenshotGenerator360:
             angles = range(0, 360, self.step_deg)
             
             for angle in angles:
-                plotter.camera.azimuth = angle
+                # Reset camera for each angle
+                plotter.camera_position = 'xy'
+                plotter.reset_camera()
+                
+                # Set up camera
+                camera = plotter.camera
+                camera.enable_parallel_projection()
+                
+                # Calculate camera position based on physical size
+                # Increased distance significantly while keeping parallel scale the same
+                camera_distance = max_physical_size * 0.05  # Increased from 0.018 to 0.05
+                
+                # Set camera position for this angle
+                theta = np.radians(angle)
+                camera.position = center + np.array([
+                    camera_distance * np.cos(theta),
+                    camera_distance * np.sin(theta),
+                    0
+                ])
+                camera.focal_point = center
+                camera.up = [0, 0, 1]  # Keep up vector consistent
+                
+                # Set parallel scale based on physical size
+                # Apply z/x ratio scaling to account for anisotropic voxels
+                scale = self.VOXEL_SIZE_NM['z'] / self.VOXEL_SIZE_NM['x']
+                # Increased scale by 50% to prevent clipping
+                plotter.camera.parallel_scale = max_physical_size * 0.014 * scale  # Increased from 0.009375 to 0.014
+                
                 plotter.render()
                 
                 frame_file = output_dir / f"{angle}.png"
@@ -179,30 +194,27 @@ class ScreenshotGenerator360:
 
 def main():
     """Script entry point for generating screenshots of a single mitochondrion."""
+    parser = argparse.ArgumentParser(description='Generate screenshots for a mitochondrion')
+    parser.add_argument('--mito-id', type=str, required=True, help='ID of the mitochondrion')
+    parser.add_argument('--output-dir', type=str, required=True, help='Directory to save screenshots')
+    parser.add_argument('--mito-url', type=str, required=True, help='URL to the mitochondria source')
+    parser.add_argument('--debug', action='store_true', help='Enable debug output')
+    args = parser.parse_args()
+    
+    # Convert mito_id to integer, handling float strings
     try:
-        # Get the project root directory (2 levels up from this script)
-        project_root = Path(__file__).parent.parent.parent
-        
-        # Configuration with absolute paths
-        csv_file = project_root / "data" / "36750893213_mito_materialization.csv"
-        mito_src = "https://rhoana.rc.fas.harvard.edu/ng/h01_mito/36750893213"
-        target_id = 115
-        output_dir = project_root / "unc_mito" / "static" / "screenshots" / str(target_id)
-        
-        print(f"Using CSV file: {csv_file}")
-        print(f"Output directory: {output_dir}")
-        
-        # Validate inputs
-        if not csv_file.exists():
-            raise FileNotFoundError(f"CSV file not found: {csv_file}")
-            
-        df = pd.read_csv(csv_file)
-        if target_id not in df["segment_id"].values:
-            raise ValueError(f"segment_id {target_id} not found in {csv_file.name}")
+        mito_id = int(float(args.mito_id))
+    except ValueError:
+        print(f"Error: Invalid mito ID '{args.mito_id}'. Must be a number.")
+        sys.exit(1)
+
+    try:
+        # Remove precomputed:// prefix if present
+        mito_src = args.mito_url.replace('precomputed://', '')
         
         # Generate screenshots
-        generator = ScreenshotGenerator360(mito_src, step_deg=30)
-        success = generator.generate_screenshots(target_id, output_dir, debug=True)
+        generator = ScreenshotGenerator360(mito_src)
+        success = generator.generate_screenshots(mito_id, args.output_dir, args.debug)
         
         if not success:
             sys.exit(1)
@@ -214,3 +226,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

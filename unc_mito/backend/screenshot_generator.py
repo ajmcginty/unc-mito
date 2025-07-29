@@ -9,6 +9,7 @@ class ScreenshotGenerator:
     def __init__(self):
         """Initialize the screenshot generator."""
         self.mito_src = "https://rhoana.rc.fas.harvard.edu/ng/h01_mito/36750893213"
+        # Match Neuroglancer's exact meter-based scaling
         self.voxel_size_nm = dict(x=8.0, y=8.0, z=33.0)  # 8×8×33 nm for H01
         self.img_size = [1024, 1024]  # screenshot resolution in pixels
         
@@ -33,10 +34,8 @@ class ScreenshotGenerator:
         # Fetch mesh from CloudVolume
         mesh = self.vol.mesh.get(mito_id)
         
-        # Scale vertices to nanometers
-        vertices = mesh.vertices * [self.voxel_size_nm['x'], 
-                                  self.voxel_size_nm['y'], 
-                                  self.voxel_size_nm['z']]
+        # Get vertices and scale to match physical dimensions
+        vertices = mesh.vertices.copy()
         
         # Format faces for PyVista
         n_triangles = mesh.faces.shape[0]
@@ -44,33 +43,79 @@ class ScreenshotGenerator:
         faces[:, 0] = 3  # Number of points per face
         faces[:, 1:] = mesh.faces
         
+        # Create the mesh
+        pvmesh = pv.PolyData(vertices, faces)
+        
+        # Calculate center and bounds
+        center = np.mean(vertices, axis=0)
+        bounds = pvmesh.bounds
+        size = np.array([
+            bounds[1] - bounds[0],
+            bounds[3] - bounds[2],
+            bounds[5] - bounds[4]
+        ])
+        
+        # Scale size by voxel dimensions to get physical size
+        physical_size = size * [self.voxel_size_nm['x'], 
+                              self.voxel_size_nm['y'], 
+                              self.voxel_size_nm['z']]
+        
+        # Use the largest physical dimension for camera distance
+        max_physical_size = np.max(physical_size)
+        
         # Create and setup the PyVista plotter
         pv.set_plot_theme('document')
         plotter = pv.Plotter(off_screen=True, window_size=self.img_size)
         
-        # Create the mesh and add to scene
-        pvmesh = pv.PolyData(vertices, faces)
-        plotter.add_mesh(pvmesh, color='red', opacity=0.8)
+        # Add visualization elements
+        plotter.add_axes()
+        plotter.add_bounding_box(color='gray', opacity=0.3)
+        plotter.enable_eye_dome_lighting()
+        plotter.enable_depth_peeling()
         
-        # Set up camera
-        plotter.camera.enable_parallel_projection()
+        # Add mesh with enhanced visibility
+        plotter.add_mesh(
+            pvmesh,
+            color='red',
+            opacity=0.8,
+            specular=1.0,
+            specular_power=10,
+            smooth_shading=True,
+            show_edges=True,
+            edge_color='black',
+            line_width=2,
+        )
         
-        # Take screenshots from different angles
+        # Define views with proper scaling for anisotropic voxels
         views = {
-            '0': 'xy',   # top view
-            '1': 'xz',   # front view
-            '2': 'yz'    # side view
+            '0': {'position': (0, 0, 1), 'up': (0, 1, 0), 'scale': 1.0},    # top view (xy)
+            '1': {'position': (0, 1, 0), 'up': (0, 0, 1), 'scale': self.voxel_size_nm['z']/self.voxel_size_nm['x']},    # front view (xz)
+            '2': {'position': (1, 0, 0), 'up': (0, 0, 1), 'scale': self.voxel_size_nm['z']/self.voxel_size_nm['x']}     # side view (yz)
         }
         
-        for view_id, camera_pos in views.items():
-            # Set camera position for this view
-            plotter.camera_position = camera_pos
+        # Take screenshots from different angles
+        for view_id, view_params in views.items():
+            # Reset plotter for new view
+            plotter.camera_position = 'xy'
             plotter.reset_camera()
+            
+            # Set up camera for this view
+            camera = plotter.camera
+            
+            # Calculate camera position based on physical dimensions
+            pos = np.array(view_params['position']) * max_physical_size * 2
+            camera.position = center + pos
+            camera.focal_point = center
+            camera.up = view_params['up']
+            camera.enable_parallel_projection()
+            
+            # Set parallel scale based on physical size and view-specific scaling
+            plotter.camera.parallel_scale = max_physical_size * 0.6 * view_params['scale']
             
             # Save screenshot
             output_file = output_dir / f"{view_id}.png"
             plotter.screenshot(str(output_file))
-    
+            
     def generate_all_screenshots(self, materialization, output_dir):
         """Generate screenshots for all mitochondria in the materialization.
         

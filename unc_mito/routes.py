@@ -2,16 +2,13 @@
 
 from flask import Blueprint, render_template, jsonify, current_app, request
 from pathlib import Path
+import subprocess
+import sys
 from .backend.materialization import MitochondriaMaterialization
-from .backend.screenshot_generator import ScreenshotGenerator
-from .backend.screenshot_generator_360 import ScreenshotGenerator360
 from .config import MATERIALIZATION_CSV, SCREENSHOTS_DIR, DEFAULT_SCREENSHOT, MITO_URL
 import os
 
-# Initialize screenshot generator and materialization data at module level
-# Remove precomputed:// prefix for CloudVolume
-mito_src = MITO_URL.replace('precomputed://', '')
-screenshot_gen = ScreenshotGenerator360(mito_src)
+# Initialize materialization data at module level
 mito_data = MitochondriaMaterialization(MATERIALIZATION_CSV)
 
 def create_blueprint():
@@ -45,8 +42,12 @@ def create_blueprint():
     @bp.route('/generate_screenshots/<int:neuron_id>')
     def generate_screenshots(neuron_id):
         try:
-            # Get mitochondria for this neuron
-            mitos = mito_data.df[mito_data.df['neuron_id'] == neuron_id]
+            # Get the current page from query parameters
+            page = int(request.args.get('page', 1))
+            
+            # Get mitochondria for this neuron and page
+            data = mito_data.get_mitochondria_for_neuron(neuron_id, page=page, per_page=8)
+            mitos = data['mitos']
             
             # Set up output directory
             os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
@@ -54,21 +55,27 @@ def create_blueprint():
             success_count = 0
             fail_count = 0
             
-            # Generate screenshots for each mitochondrion
-            for _, row in mitos.iterrows():
-                mito_id = row['segment_id']
+            # Generate screenshots for each mitochondrion on this page
+            for mito in mitos:
+                mito_id = mito['id']
                 output_dir_for_mito = Path(SCREENSHOTS_DIR) / str(mito_id)
                 
                 # Only generate if screenshots don't exist
                 if not output_dir_for_mito.exists():
-                    success = screenshot_gen.generate_screenshots(
-                        mito_id,
-                        output_dir_for_mito
-                    )
+                    # Get the path to the screenshot generator script
+                    script_path = os.path.join(os.path.dirname(__file__), 'backend', 'screenshot_generator_360.py')
                     
-                    if success:
+                    # Run the script as a separate process
+                    try:
+                        subprocess.run([
+                            sys.executable,
+                            script_path,
+                            '--mito-id', str(mito_id),
+                            '--output-dir', str(output_dir_for_mito),
+                            '--mito-url', MITO_URL
+                        ], check=True)
                         success_count += 1
-                    else:
+                    except subprocess.CalledProcessError:
                         fail_count += 1
             
             return jsonify({
