@@ -4,6 +4,7 @@ from flask import Blueprint, render_template, jsonify, current_app, request
 from pathlib import Path
 import subprocess
 import sys
+import shutil
 from .backend.materialization import MitochondriaMaterialization
 from .config import MATERIALIZATION_CSV, SCREENSHOTS_DIR, DEFAULT_SCREENSHOT, MITO_URL
 import os
@@ -14,6 +15,17 @@ mito_data = MitochondriaMaterialization(MATERIALIZATION_CSV)
 def create_blueprint():
     """Create the Flask blueprint for the mitochondria viewer."""
     bp = Blueprint('mitochondria', __name__)
+    
+    @bp.route('/restart_screenshots', methods=['POST'])
+    def restart_screenshots():
+        """Clear all screenshots and recreate the screenshots directory."""
+        try:
+            if os.path.exists(SCREENSHOTS_DIR):
+                shutil.rmtree(SCREENSHOTS_DIR)
+            os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
+            return jsonify({'success': True, 'message': 'Screenshots cleared successfully'})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
     
     @bp.route('/')
     def index():
@@ -30,14 +42,7 @@ def create_blueprint():
             print(f"Error in get_mitos: {str(e)}")
             return jsonify({'error': str(e)}), 500
         
-    @bp.route('/get_neuroglancer_url/<int:mito_id>/<int:neuron_id>')
-    def get_ng_url(mito_id, neuron_id):
-        try:
-            url = mito_data.get_neuroglancer_url(mito_id, neuron_id)
-            return jsonify({'url': url})
-        except Exception as e:
-            print(f"Error in get_ng_url: {str(e)}")
-            return jsonify({'error': str(e)}), 500
+
             
     @bp.route('/generate_screenshots/<int:neuron_id>')
     def generate_screenshots(neuron_id):

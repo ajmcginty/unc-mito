@@ -214,6 +214,20 @@ button:hover {
     font-weight: 500;
 }
 
+.warning-button {
+  background-color: #ffc107;
+  color: #000;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 8px;
+}
+
+.warning-button:hover {
+  background-color: #e0a800;
+}
+
 @media (max-width: 1200px) {
     .mito-grid {
         grid-template-columns: repeat(2, 1fr);

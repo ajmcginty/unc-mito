@@ -14,10 +14,12 @@ class MitochondriaViewer {
         this.openInNeuroglancer = this.openInNeuroglancer.bind(this);
         this.generateScreenshots = this.generateScreenshots.bind(this);
         this.goToPage = this.goToPage.bind(this);
+        this.restartScreenshots = this.restartScreenshots.bind(this);
         
         // Add global functions
         window.loadMitosForNeuron = () => this.loadMitosForNeuron();
         window.generateScreenshots = this.generateScreenshots;
+        window.restartScreenshots = () => this.restartScreenshots();
     }
     
     async loadMitosForNeuron(page = 1) {
@@ -214,12 +216,40 @@ class MitochondriaViewer {
     }
     
     async openInNeuroglancer(mitoId, neuronId) {
+        alert('Neuroglancer integration is currently under maintenance. Please check back later.');
+    }
+    
+    async restartScreenshots() {
+        if (!confirm('Are you sure you want to clear all screenshots? This cannot be undone.')) {
+            return;
+        }
+        
+        const statusDiv = document.getElementById('screenshot-status');
+        const restartBtn = document.getElementById('restart-screenshots');
+        
         try {
-            const response = await fetch(`/get_neuroglancer_url/${mitoId}/${neuronId}`);
+            statusDiv.style.display = 'block';
+            statusDiv.textContent = 'Clearing screenshots...';
+            restartBtn.disabled = true;
+            
+            const response = await fetch('/restart_screenshots', {
+                method: 'POST'
+            });
             const data = await response.json();
-            window.open(data.url, '_blank');
+            
+            if (data.success) {
+                statusDiv.textContent = data.message;
+                // Reload the current view if we have a neuron loaded
+                if (this.currentNeuronId) {
+                    await this.loadMitosForNeuron(this.currentPage);
+                }
+            } else {
+                statusDiv.textContent = `Error: ${data.error}`;
+            }
         } catch (error) {
-            console.error('Error opening Neuroglancer:', error);
+            statusDiv.textContent = `Error: ${error.message}`;
+        } finally {
+            restartBtn.disabled = false;
         }
     }
     
