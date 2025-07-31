@@ -3,12 +3,8 @@
 import pandas as pd
 import numpy as np
 import requests
-import json
-import urllib.parse
-from ..config import MITO_URL, NEURON_URL
-import os
-import json
 from ..config import MITO_URL, NEURON_URL, DEFAULT_SCREENSHOT
+import os
 
 class MitochondriaMaterialization:
     def __init__(self, csv_path):
@@ -18,12 +14,12 @@ class MitochondriaMaterialization:
             csv_path (str): Path to CSV containing mitochondria data
         """
         self.df = pd.read_csv(csv_path)
-        self.mito_url = MITO_URL
-        self.neuron_url = NEURON_URL
         # Convert segment_id to integer
         self.df['segment_id'] = self.df['segment_id'].astype(int)
-        self.mito_url = MITO_URL
-        self.neuron_url = NEURON_URL
+        
+        # Make sure URLs have the precomputed:// prefix
+        self.mito_url = MITO_URL if MITO_URL.startswith('precomputed://') else f"precomputed://{MITO_URL}"
+        self.neuron_url = NEURON_URL if NEURON_URL.startswith('precomputed://') else f"precomputed://{NEURON_URL}"
         
     def validate_bounds(self, volume_bounds, scale_factor=32):
         """Check if mitochondria are completely outside volume bounds.
@@ -102,13 +98,6 @@ class MitochondriaMaterialization:
             center_y = (mito['min_y'] + mito['max_y']) / 2
             center_z = (mito['min_z'] + mito['max_z']) / 2
             
-            # Create Neuroglancer view state for this mitochondrion
-            view_state = {
-                'position': [center_x, center_y, center_z],
-                'mito_id': mito['segment_id'],
-                'neuron_id': mito['neuron_id']
-            }
-            
             # Check if screenshots exist, otherwise use a placeholder
             screenshot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 
                                         'static', 'screenshots', str(mito['segment_id']))
@@ -138,7 +127,7 @@ class MitochondriaMaterialization:
                     'max_y': mito['max_y'],
                     'max_z': mito['max_z']
                 },
-                'view_state': view_state,
+
                 'screenshots': screenshots
             })
             
@@ -149,123 +138,7 @@ class MitochondriaMaterialization:
             'total_mitos': total_mitos
         }
     
-    def get_neuroglancer_url(self, mito_id, neuron_id):
-        """Generate a Neuroglancer URL for viewing a specific mitochondrion."""
-        mito = self.df[
-            (self.df['segment_id'] == mito_id) & 
-            (self.df['neuron_id'] == neuron_id)
-        ].iloc[0]
-        
-        center_x = (mito['min_x'] + mito['max_x']) / 2
-        center_y = (mito['min_y'] + mito['max_y']) / 2
-        center_z = (mito['min_z'] + mito['max_z']) / 2
-        
-        # Calculate size for zoom level
-        size_x = mito['max_x'] - mito['min_x']
-        size_y = mito['max_y'] - mito['min_y']
-        size_z = mito['max_z'] - mito['min_z']
-        max_size = max(size_x, size_y, size_z)
-        
-        view_state = {
-            "dimensions": {
-                "x": ["x", "nm"],
-                "y": ["y", "nm"],
-                "z": ["z", "nm"]
-            },
-            "position": [center_x, center_y, center_z],
-            "crossSectionScale": 1,
-            "projectionScale": max_size / 2,
-            "layout": "xy-3d",
-            "showSlices": True,
-            "showAxisLines": True,
-            "showDefaultAnnotations": True,
-            "layers": [
-                {
-                    "type": "segmentation",
-                    "source": self.mito_url,
-                    "tab": "source",
-                    "segments": [str(mito_id)],
-                    "name": "mitochondria",
-                    "visible": True,
-                    "selectedAlpha": 0.8,
-                    "notSelectedAlpha": 0,
-                    "shader": """
-                        void main() {
-                            emitRGB(vec3(0.8, 0.2, 0.2));
-                            emitAlpha(0.8);
-                        }
-                    """,
-                    "segmentDefaultColor": "#ff0000"
-                },
-                {
-                    "type": "segmentation",
-                    "source": self.neuron_url,
-                    "tab": "source",
-                    "segments": [str(neuron_id)],
-                    "name": "neuron",
-                    "visible": True,
-                    "selectedAlpha": 0.3,
-                    "notSelectedAlpha": 0,
-                    "shader": """
-                        void main() {
-                            emitRGB(vec3(0.2, 0.2, 0.8));
-                            emitAlpha(0.3);
-                        }
-                    """,
-                    "segmentDefaultColor": "#0000ff"
-                }
-            ]
-        }
-        
-        # Construct minimal state for Neuroglancer
-        state = {
-            "dimensions": {
-                "x": ["x", "nm"],
-                "y": ["y", "nm"],
-                "z": ["z", "nm"]
-            },
-            "position": view_state["position"],
-            "crossSectionScale": 1,
-            "projectionScale": view_state["projectionScale"],
-            "layers": [
-                {
-                    "type": "segmentation",
-                    "source": {
-                        "url": self.mito_url,
-                        "transform": {
-                            "outputDimensions": {
-                                "x": ["x", "nm"],
-                                "y": ["y", "nm"],
-                                "z": ["z", "nm"]
-                            }
-                        }
-                    },
-                    "segments": [str(mito_id)],
-                    "name": "mitochondria"
-                },
-                {
-                    "type": "segmentation",
-                    "source": {
-                        "url": self.neuron_url,
-                        "transform": {
-                            "outputDimensions": {
-                                "x": ["x", "nm"],
-                                "y": ["y", "nm"],
-                                "z": ["z", "nm"]
-                            }
-                        }
-                    },
-                    "segments": [str(neuron_id)],
-                    "name": "neuron"
-                }
-            ],
-            "layout": "xy-3d",
-            "selectedLayer": {"visible": True, "layer": "mitochondria"}
-        }
-        
-        # Convert the state to a JSON string and URL encode it
-        encoded_state = urllib.parse.quote(json.dumps(state))
-        return f"https://neuroglancer-demo.appspot.com/#!{encoded_state}"
+
     def get_volume_bounds_from_precomputed(self, precomputed_url):
         if precomputed_url.startswith('precomputed://'):
             precomputed_url = precomputed_url[len('precomputed://'):]
@@ -287,14 +160,3 @@ class MitochondriaMaterialization:
             'z_max': voxel_offset[2] + size[2]
         }
         
-# Example usage
-if __name__ == "__main__":
-    # Initialize with your CSV
-    mito = MitochondriaMaterialization("/Users/ajmcginty/Downloads/36750893213_mito_materialization.csv")
-    
-    # Get bounds from your precomputed URL
-    precomputed_url = "https://rhoana.rc.fas.harvard.edu/ng/h01_mito/36750893213"
-    bounds = mito.get_volume_bounds_from_precomputed(precomputed_url)
-    
-    # Validate - only flags completely out-of-bounds mitochondria
-    all_overlap, outside_ids = mito.validate_bounds(bounds, scale_factor=32)
