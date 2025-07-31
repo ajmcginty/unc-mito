@@ -6,9 +6,9 @@ A web application for viewing and analyzing mitochondria from the H01 dataset. T
 
 This application allows users to:
 - View mitochondria from the H01 dataset in a grid layout
-- See each mitochondrion from multiple angles (top, front, side views)
-- Open specific mitochondria directly in Neuroglancer for detailed inspection
+- See each mitochondrion from 360 degrees with 8 different angles
 - Navigate through large sets of mitochondria with pagination
+- Generate and manage 3D visualizations with enhanced depth perception
 
 ## Data Sources
 
@@ -19,7 +19,7 @@ The application uses the following data sources:
 
 ## Requirements
 
-- Python 3.12+
+- Python 3.8+
 - Flask
 - NumPy
 - Pandas
@@ -61,7 +61,7 @@ flask run
 - `unc_mito/`: Main application package
   - `backend/`: Backend processing modules
     - `materialization.py`: Handles mitochondria data loading and processing
-    - `screenshot_generator.py`: Generates mitochondria screenshots using CloudVolume and PyVista
+    - `screenshot_generator_360.py`: Generates 360-degree mitochondria views using CloudVolume and PyVista
   - `static/`: Static files (CSS, JavaScript, screenshots)
   - `templates/`: HTML templates
   - `routes.py`: Flask routes and API endpoints
@@ -69,9 +69,12 @@ flask run
 ## Technical Details
 
 - Uses CloudVolume to fetch 3D mesh data from the H01 dataset
-- Renders mitochondria using PyVista for consistent visualization
+- Renders mitochondria using PyVista with enhanced 3D visualization features:
+  - 360-degree views with 8 different angles
+  - Eye-dome lighting for better depth perception
+  - Edge enhancement and smooth shading
 - Implements server-side screenshot generation for better performance
-- Provides a responsive grid layout with client-side pagination
+- Provides a responsive grid layout with client-side pagination and view controls
 
 ## Credits
 
